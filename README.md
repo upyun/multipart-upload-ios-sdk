@@ -24,11 +24,11 @@ UMUUploaderManager * manager = [UMUUploaderManager managerWithBucket:<bucket>];
 * 可传入类型：
  * `NSData`
  
-#####2、`policy` 存储/校验信息（生成方式详细见Demo或者 [又拍云存储 分块上传 API接口 signature和policy算法] (http://docs.upyun.com/api/multipart_upload/#_1) ）
+#####2、`policy` 存储/校验信息（生成方式详细见Demo或者 [分块上传 API接口 signature和policy算法] (http://docs.upyun.com/api/multipart_upload/#_1) ）
 * 可传入类型：
  * `NSString`
  
-#####3、`signature` 校验签名（生成方式详细见Demo或者 [又拍云存储 分块上传 API接口 signature和policy算法] (http://docs.upyun.com/api/multipart_upload/#_1) ）
+#####3、`signature` 校验签名（生成方式详细见Demo或者 [分块上传 API接口 signature和policy算法] (http://docs.upyun.com/api/multipart_upload/#_1) ）
 * 可传入类型：
  * `NSString`
 
