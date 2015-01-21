@@ -41,7 +41,7 @@ static NSInteger MaxRetryCount  = 3;
 /**
  *  结果的Http Headers
  */
-static NSDictionary * ResponHeaders;
+static NSDictionary * ResponseHeaders;
 
 
 static NSMutableDictionary * managerRepository;
@@ -114,9 +114,9 @@ static NSMutableDictionary * managerRepository;
     return parameters;
 }
 
-- (NSDictionary *)getResponeHeaders
+- (NSDictionary *)getResponseHeaders
 {
-    return ResuoqponHeaders;
+    return ResponseHeaders;
 }
 
 - (UMUUploaderOperation *)uploadWithFile:(NSData *)fileData
@@ -128,7 +128,7 @@ static NSMutableDictionary * managerRepository;
                                                    NSDictionary * result,
                                                    BOOL completed))completeBlock
 {
-    ResponHeaders = nil;
+    ResponseHeaders = nil;
     NSArray * blocks = [UMUUploaderManager subDatasWithFileData:fileData];
     __block NSInteger failedCount = 0;
     __block NSInteger successCount = 0;
@@ -374,7 +374,7 @@ static NSMutableDictionary * managerRepository;
 {
     __weak typeof(self)weakSelf = self;
     id successBlock = ^(AFHTTPRequestOperation *operation, id responseObject) {
-        ResponHeaders = operation.response.allHeaderFields;
+        ResponseHeaders = operation.response.allHeaderFields;
         NSError * error = [weakSelf checkResultWithResponseObject:responseObject];
         if (error && completeBlock) {
             completeBlock(error,nil,NO);
@@ -384,7 +384,7 @@ static NSMutableDictionary * managerRepository;
     };
     
     id failureBlock = ^(AFHTTPRequestOperation *operation, NSError *error) {
-        ResponHeaders = operation.response.allHeaderFields;
+        ResponseHeaders = operation.response.allHeaderFields;
         if (operation.responseData) {
             NSDictionary * responseObject = [NSJSONSerialization JSONObjectWithData:operation.responseData
                                                                             options:NSJSONReadingMutableLeaves

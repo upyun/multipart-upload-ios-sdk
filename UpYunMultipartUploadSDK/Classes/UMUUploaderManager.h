@@ -81,7 +81,7 @@
  *
  *  @return  http header
  */
-- (NSDictionary *)getResponeHeaders;
+- (NSDictionary *)getResponseHeaders;
 
 /**
  *  取消所有请求
