@@ -75,6 +75,14 @@
                            completeBlock:(void (^)(NSError * error,
                                                    NSDictionary * result,
                                                    BOOL completed))completeBlock;
+
+/**
+ *  获取http请求的respone 的header信息
+ *
+ *  @return  http header
+ */
+- (NSDictionary *)getResponeHeaders;
+
 /**
  *  取消所有请求
  */
