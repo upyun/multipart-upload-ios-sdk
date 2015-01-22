@@ -38,12 +38,15 @@ static NSInteger ValidTimeSpan = 60.0f;
  */
 static NSInteger MaxRetryCount  = 3;
 
-
 static NSMutableDictionary * managerRepository;
 
 @interface UMUUploaderManager()
 @property(nonatomic,copy)NSString * bucket;
+#ifdef AF_1_3_4
+@property(nonatomic,strong)AFHTTPClient * afClient;
+#else
 @property(nonatomic,strong)AFHTTPRequestOperationManager * afManager;
+#endif
 @property(nonatomic,strong)UMUUploaderOperation * umuOperation;
 @end
 @implementation UMUUploaderManager
@@ -53,8 +56,13 @@ static NSMutableDictionary * managerRepository;
     if (self = [super init]) {
         self.bucket = bucket;
         NSURL * baseUrl = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", API_SERVER, bucket]];
+#ifdef AF_1_3_4
+        self.afClient = [[AFHTTPClient alloc]initWithBaseURL:baseUrl];
+        self.afClient.operationQueue.maxConcurrentOperationCount = MaxConcurrentOperationCount;
+#else
         self.afManager = [[AFHTTPRequestOperationManager alloc]initWithBaseURL:baseUrl];
         self.afManager.operationQueue.maxConcurrentOperationCount = MaxConcurrentOperationCount;
+#endif
     }
     return self;
 }
@@ -96,7 +104,12 @@ static NSMutableDictionary * managerRepository;
 {
     for (NSString * key in managerRepository.allKeys) {
         UMUUploaderManager * manager = managerRepository[key];
+#ifdef AF_1_3_4
+        [manager.afClient.operationQueue cancelAllOperations];
+#else
         [manager.afManager.operationQueue cancelAllOperations];
+#endif
+    
     }
 }
 
@@ -315,11 +328,21 @@ static NSMutableDictionary * managerRepository;
     NSDictionary * parameters = @{@"policy":uploadPolicy,
                                   @"signature":[weakSelf createSignatureWithToken:tokenSecret
                                                                        parameters:policyParameters]};
+#ifdef AF_1_3_4
+    NSMutableURLRequest *request =  [self.afClient multipartFormRequestWithMethod:@"POST"
+                                                                             path:@""
+                                                                       parameters:parameters
+                                                        constructingBodyWithBlock:constructingBodyWithBlock];
+    AFHTTPRequestOperation *uploadOperation = [self.afClient HTTPRequestOperationWithRequest:request
+                                                                                     success:successBlock
+                                                                                     failure:failureBlock];
+#else
     AFHTTPRequestOperation *uploadOperation  = [self.afManager POST:@""
                                                          parameters:parameters
                                           constructingBodyWithBlock:constructingBodyWithBlock
                                                             success:successBlock
                                                             failure:failureBlock];
+#endif
     [self.umuOperation addOperation:uploadOperation];
     [uploadOperation start];
 }
@@ -395,7 +418,17 @@ static NSMutableDictionary * managerRepository;
     };
     NSDictionary * requestParameters = @{@"policy":policy,
                                          @"signature":signature};
+#ifdef AF_1_3_4
+    NSMutableURLRequest *request = [self.afClient requestWithMethod:@"POST"
+                                                               path:@""
+                                                         parameters:requestParameters];
+    [request setValue:@"application/x-www-form-urlencoded; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
+    AFHTTPRequestOperation *ministrantOperation = [self.afClient HTTPRequestOperationWithRequest:request
+                                                                                         success:successBlock
+                                                                                         failure:failureBlock];
+#else
     AFHTTPRequestOperation *ministrantOperation = [self.afManager POST:@"" parameters:requestParameters success:successBlock failure:failureBlock];
+#endif
     [self.umuOperation addOperation:ministrantOperation];
     [ministrantOperation start];
     return ministrantOperation;
