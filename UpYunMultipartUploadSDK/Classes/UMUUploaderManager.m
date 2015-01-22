@@ -11,6 +11,7 @@
 #import "NSData+MD5Digest.h"
 #import "NSString+Base64Encode.h"
 #import "NSString+NSHash.h"
+#define AF_1_3_4
 static NSString * UMU_ERROR_DOMAIN = @"UMUErrorDomain";
 
 /**
