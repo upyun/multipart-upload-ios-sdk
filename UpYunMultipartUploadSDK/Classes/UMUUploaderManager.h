@@ -77,13 +77,6 @@
                                                    BOOL completed))completeBlock;
 
 /**
- *  获取http请求的respone 的header信息
- *
- *  @return  http header
- */
-- (NSDictionary *)getResponseHeaders;
-
-/**
  *  取消所有请求
  */
 + (void)cancelAllOperations;
