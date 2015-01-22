@@ -264,7 +264,8 @@ static NSMutableDictionary * managerRepository;
     };
     id successBlock = ^(AFHTTPRequestOperation *operation, id responseObject) {
         progressBlock(1);
-        NSError * error = [weakSelf checkResultWithResponseObject:responseObject];
+        NSError * error = [weakSelf checkResultWithResponseObject:responseObject
+                                                         response:operation.response];
         if (error && completeBlock) {
             if (retryTimes >= MaxRetryCount) {
                 completeBlock(error,nil,NO);
@@ -363,7 +364,8 @@ static NSMutableDictionary * managerRepository;
 {
     __weak typeof(self)weakSelf = self;
     id successBlock = ^(AFHTTPRequestOperation *operation, id responseObject) {
-        NSError * error = [weakSelf checkResultWithResponseObject:responseObject];
+        NSError * error = [weakSelf checkResultWithResponseObject:responseObject
+                                                         response:operation.response];
         if (error && completeBlock) {
             completeBlock(error,nil,NO);
         }else if (completeBlock) {
@@ -372,13 +374,21 @@ static NSMutableDictionary * managerRepository;
     };
     
     id failureBlock = ^(AFHTTPRequestOperation *operation, NSError *error) {
+        NSDictionary * allHeaderFields = operation.response.allHeaderFields;
         if (operation.responseData) {
             NSDictionary * responseObject = [NSJSONSerialization JSONObjectWithData:operation.responseData
                                                                             options:NSJSONReadingMutableLeaves
                                                                               error:nil];
             if (responseObject[@"error_code"]) {
+                NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
+                if (allHeaderFields) {
+                    userInfo[@"allHeaderFields"] = allHeaderFields;
+                    userInfo[@"statusCode"] = @(operation.response.statusCode);
+                }
+                userInfo[NSLocalizedDescriptionKey] = responseObject[@"message"];
                 error = [NSError errorWithDomain:UMU_ERROR_DOMAIN
-                                            code:[responseObject[@"error_code"] integerValue]userInfo:@{NSLocalizedDescriptionKey:responseObject[@"message"]}];
+                                            code:[responseObject[@"error_code"] integerValue]
+                                        userInfo:userInfo];
             }
         }
         completeBlock(error,nil,NO);
@@ -396,10 +406,18 @@ static NSMutableDictionary * managerRepository;
 
 
 - (NSError *)checkResultWithResponseObject:(NSDictionary *)responseObject
+                                  response:(NSHTTPURLResponse*)response
 {
     if (responseObject[@"error_code"]) {
+        NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
+        if (response.allHeaderFields) {
+            userInfo[@"allHeaderFields"] = response.allHeaderFields;
+            userInfo[@"statusCode"] = @(response.statusCode);
+        }
+        userInfo[NSLocalizedDescriptionKey] = responseObject[@"message"];
         NSError * error = [NSError errorWithDomain:UMU_ERROR_DOMAIN
-                                              code:[responseObject[@"error_code"] integerValue]userInfo:@{NSLocalizedDescriptionKey:responseObject[@"message"]}];
+                                              code:[responseObject[@"error_code"] integerValue]
+                                          userInfo:userInfo];
         return error;
     }
     return nil;
