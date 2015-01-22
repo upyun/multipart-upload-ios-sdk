@@ -11,7 +11,9 @@
 #import "NSData+MD5Digest.h"
 #import "NSString+Base64Encode.h"
 #import "NSString+NSHash.h"
+#if __has_include("AFHTTPClient.h")
 #define AF_1_3_4
+#endif
 static NSString * UMU_ERROR_DOMAIN = @"UMUErrorDomain";
 
 /**
