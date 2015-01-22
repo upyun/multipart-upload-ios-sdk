@@ -11,6 +11,7 @@
 #import "NSData+MD5Digest.h"
 #import "NSString+Base64Encode.h"
 #import "NSString+NSHash.h"
+#define AF_1_3_4
 static NSString * UMU_ERROR_DOMAIN = @"UMUErrorDomain";
 
 /**
@@ -308,8 +309,16 @@ static NSMutableDictionary * managerRepository;
                                                                                 options:NSJSONReadingMutableLeaves
                                                                                   error:nil];
                 if (responseObject[@"error_code"]) {
+                    NSHTTPURLResponse * response = operation.response;
+                    NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
+                    if (response.allHeaderFields) {
+                        userInfo[@"allHeaderFields"] = response.allHeaderFields;
+                        userInfo[@"statusCode"] = @(response.statusCode);
+                    }
+                    userInfo[NSLocalizedDescriptionKey] = responseObject[@"message"];
                     error = [NSError errorWithDomain:UMU_ERROR_DOMAIN
-                                                code:[responseObject[@"error_code"] integerValue]userInfo:@{NSLocalizedDescriptionKey:responseObject[@"message"]}];
+                                                code:[responseObject[@"error_code"] integerValue]
+                                            userInfo:userInfo];
                 }
             }
             completeBlock(error,nil,NO);
