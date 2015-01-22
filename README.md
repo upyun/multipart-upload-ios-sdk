@@ -3,7 +3,7 @@
 又拍云存储iOS 分块上传 SDK，基于 [又拍云存储 分块上传 API接口] (http://docs.upyun.com/api/multipart_upload/) 开发。
 ## 使用说明
 ### 要求
-iOS6.0及以上版本，ARC模式，AFNetworking 2.3.1及以上 ([AFNetworking 1.3.x 用户戳这里] (https://github.com/upyun/multipart-upload-ios-sdk/tree/afbackward)）
+iOS6.0及以上版本，ARC模式，AFNetworking 1.3.4及以上
 
 ### 初始化UpYun
 ````
