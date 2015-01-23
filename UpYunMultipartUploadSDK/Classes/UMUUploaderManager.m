@@ -413,17 +413,8 @@ static NSMutableDictionary * managerRepository;
             NSDictionary * responseObject = [NSJSONSerialization JSONObjectWithData:operation.responseData
                                                                             options:NSJSONReadingMutableLeaves
                                                                               error:nil];
-            if (responseObject[@"error_code"]) {
-                NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
-                if (allHeaderFields) {
-                    userInfo[@"allHeaderFields"] = allHeaderFields;
-                    userInfo[@"statusCode"] = @(operation.response.statusCode);
-                }
-                userInfo[NSLocalizedDescriptionKey] = responseObject[@"message"];
-                error = [NSError errorWithDomain:UMU_ERROR_DOMAIN
-                                            code:[responseObject[@"error_code"] integerValue]
-                                        userInfo:userInfo];
-            }
+            NSError * error = [weakSelf checkResultWithResponseObject:responseObject
+                                                             response:operation.response];
         }
         completeBlock(error,nil,NO);
     };
