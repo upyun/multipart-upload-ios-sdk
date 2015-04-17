@@ -5,7 +5,6 @@
 //  Created by Jack Zhou on 6/10/14.
 //
 //
-
 #import "UMUUploaderManager.h"
 #import <AFNetworking.h>
 #import "NSData+MD5Digest.h"

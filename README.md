@@ -5,6 +5,10 @@
 ### 要求
 iOS6.0及以上版本，ARC模式，AFNetworking 1.3.4及以上
 
+### 问题说明
+下载之后如果发现没有pod项目,可以进入到项目目录使用```` pod install ````解决
+
+如果install时间过长，可以使用 ````pod install --verbose --no-repo-update ````
 ### 初始化UpYun
 ````
 UMUUploaderManager * manager = [UMUUploaderManager managerWithBucket:<bucket>];
