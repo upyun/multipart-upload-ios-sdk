@@ -145,6 +145,10 @@ static NSMutableDictionary * managerRepository;
         if (!completed) {
             completeBlock(error,nil,NO);
         }else {
+            if ([result isKindOfClass:[NSData class]]){
+                NSData *data = (NSData*)result;
+                result =  [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableLeaves error:nil];
+            }
             NSString * saveToken = result[@"save_token"];
             NSArray * filesStatus = result[@"status"];
             NSString * tokenSecret = result[@"token_secret"];
@@ -443,6 +447,11 @@ static NSMutableDictionary * managerRepository;
 - (NSError *)checkResultWithResponseObject:(NSDictionary *)responseObject
                                   response:(NSHTTPURLResponse*)response
 {
+    if ([responseObject isKindOfClass:[NSData class]]){
+        NSData *data = (NSData*)responseObject;
+        responseObject =  [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableLeaves error:nil];
+    }
+
     if (responseObject[@"error_code"]) {
         NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
         if (response.allHeaderFields) {
