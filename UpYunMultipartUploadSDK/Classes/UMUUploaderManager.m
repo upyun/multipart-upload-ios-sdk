@@ -7,13 +7,12 @@
 //
 
 #import "UMUUploaderManager.h"
-#import <AFNetworking.h>
 #import "NSData+MD5Digest.h"
 #import "NSString+Base64Encode.h"
 #import "NSString+NSHash.h"
-#if __has_include("AFHTTPClient.h")
-#define AF_1_3_4
-#endif
+#import "UPHTTPClient.h"
+
+
 static NSString * UMU_ERROR_DOMAIN = @"UMUErrorDomain";
 
 /**
@@ -45,11 +44,6 @@ static NSMutableDictionary * managerRepository;
 
 @interface UMUUploaderManager()
 @property(nonatomic,copy)NSString * bucket;
-#ifdef AF_1_3_4
-@property(nonatomic,strong)AFHTTPClient * afClient;
-#else
-@property(nonatomic,strong)AFHTTPRequestOperationManager * afManager;
-#endif
 @property(nonatomic,strong)UMUUploaderOperation * umuOperation;
 @end
 @implementation UMUUploaderManager
@@ -58,14 +52,6 @@ static NSMutableDictionary * managerRepository;
 {
     if (self = [super init]) {
         self.bucket = bucket;
-        NSURL * baseUrl = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", API_SERVER, bucket]];
-#ifdef AF_1_3_4
-        self.afClient = [[AFHTTPClient alloc]initWithBaseURL:baseUrl];
-        self.afClient.operationQueue.maxConcurrentOperationCount = MaxConcurrentOperationCount;
-#else
-        self.afManager = [[AFHTTPRequestOperationManager alloc]initWithBaseURL:baseUrl];
-        self.afManager.operationQueue.maxConcurrentOperationCount = MaxConcurrentOperationCount;
-#endif
     }
     return self;
 }
@@ -107,12 +93,7 @@ static NSMutableDictionary * managerRepository;
 {
     for (NSString * key in managerRepository.allKeys) {
         UMUUploaderManager * manager = managerRepository[key];
-#ifdef AF_1_3_4
-        [manager.afClient.operationQueue cancelAllOperations];
-#else
-        [manager.afManager.operationQueue cancelAllOperations];
-#endif
-    
+        [manager.umuOperation canncel];
     }
 }
 
@@ -128,23 +109,27 @@ static NSMutableDictionary * managerRepository;
 - (UMUUploaderOperation *)uploadWithFile:(NSData *)fileData
                                   policy:(NSString *)policy
                                signature:(NSString *)signature
-                           progressBlock:(void (^)(CGFloat percent,
+                           progressBlock:(void (^)(float percent,
                                                    long long requestDidSendBytes))progressBlock
                            completeBlock:(void (^)(NSError * error,
                                                    NSDictionary * result,
                                                    BOOL completed))completeBlock
 {
     NSArray * blocks = [UMUUploaderManager subDatasWithFileData:fileData];
-    __block NSInteger failedCount = 0;
-    __block NSInteger successCount = 0;
-    __block NSError * resultError;
+
     __weak typeof(self)weakSelf = self;
+    __block float totalPercent = 0;
+
+    __block int blockFailed = 0;
+    __block int blockSuccess = 0;
+
+
     id prepareUploadCompletedBlock = ^(NSError * error,
                                        NSDictionary * result,
                                        BOOL completed) {
         if (!completed) {
             completeBlock(error,nil,NO);
-        }else {
+        } else {
             if ([result isKindOfClass:[NSData class]]){
                 NSData *data = (NSData*)result;
                 result =  [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableLeaves error:nil];
@@ -153,65 +138,91 @@ static NSMutableDictionary * managerRepository;
             NSArray * filesStatus = result[@"status"];
             NSString * tokenSecret = result[@"token_secret"];
             NSMutableArray * remainingFileBlockIndexs = [[NSMutableArray alloc]init];
-            __block float totalPercent = 0;
-            float uploadedPercent = 1.0f;
+            NSMutableArray *progressArray = [NSMutableArray new];
+
             for (int i=0 ; i<filesStatus.count; i++) {
+                [progressArray addObject:filesStatus[i]];
                 if (![filesStatus[i]boolValue]) {
                     [remainingFileBlockIndexs addObject:@(i)];
-                    uploadedPercent-=1.0/filesStatus.count;
+
                 }
             }
-            
+
             id mergeRequestCompleteBlcok =^(NSError *error, NSDictionary *result, BOOL completed) {
                 if (completeBlock) {
-                    if (completed) {
-                        completeBlock(nil, result, YES);
-                    }else {
-                        completeBlock(error, nil, NO);
-                    }
+
+                    dispatch_async(dispatch_get_main_queue(), ^()
+                                   {
+                                       if (completed) {
+                                           if ([result isKindOfClass:[NSDictionary class]]) {
+                                               completeBlock(nil, result, YES);
+                                           } else {
+                                               NSError *error;
+                                               NSDictionary *json = [NSJSONSerialization JSONObjectWithData:(NSData *)result options:kNilOptions error:&error];
+                                               if (json == nil) {
+                                                   completeBlock(error, nil, YES);
+                                               } else {
+                                                   completeBlock(nil, json, YES);
+                                               }
+                                           }
+                                       }else {
+                                           completeBlock(error, nil, NO);
+                                       }
+
+                                   });
+
                 }
             };
-            
-            if (uploadedPercent == 1.0f) {
-                [weakSelf fileMergeRequestWithSaveToken:saveToken
-                                            tokenSecret:tokenSecret
-                                             retryCount:0
-                                          completeBlock:mergeRequestCompleteBlcok];
-                return;
-            }
-            NSMutableDictionary * progressDic = [[NSMutableDictionary alloc]init];
+
+
             for (NSNumber * num in remainingFileBlockIndexs) {
                 NSData * blockData = [blocks objectAtIndex:[num intValue]];
                 id singleUploadProgressBlcok = ^(float percent) {
-                    totalPercent = totalPercent+percent/filesStatus.count;
                     if (progressBlock) {
-                        progressBlock(totalPercent+uploadedPercent, fileData.length);
+                        @synchronized(progressArray) {
+                            progressArray[[num intValue]] = [NSNumber numberWithFloat:percent];
+                            float sumPercent = 0;
+                            for (NSNumber *num in progressArray) {
+                                sumPercent += [num floatValue];
+                            }
+                            totalPercent = sumPercent/progressArray.count;
+
+                            dispatch_async(dispatch_get_main_queue(), ^() {
+                                if (totalPercent) {
+                                    progressBlock(totalPercent, fileData.length);
+                                }
+                            });
+                        }
                     }
                 };
-                
+
+
                 id singleUploadCompleteBlock = ^(NSError *error, NSDictionary *result, BOOL completed) {
-                    if (completed) {
-                        successCount++;
-                    }else{
-                        failedCount++;
-                        resultError = error;
+                    if (!completed) {
+                        if (completeBlock) {
+                            completeBlock(error,nil,NO);
+
+                        }
+                        return ;
                     }
-                    if ((failedCount+successCount == remainingFileBlockIndexs.count) && failedCount == 0) {
+
+                    if (completed) {
+                        blockSuccess++;
+                    } else {
+                        blockFailed++;
+                    }
+
+                    if (blockFailed < 1 && blockSuccess == remainingFileBlockIndexs.count) {
                         [weakSelf fileMergeRequestWithSaveToken:saveToken
                                                     tokenSecret:tokenSecret
                                                      retryCount:0
                                                   completeBlock:mergeRequestCompleteBlcok];
-                    }else if((failedCount+successCount == remainingFileBlockIndexs.count) && failedCount != 0) {
-                        if (completeBlock) {
-                            completeBlock(resultError,nil,NO);
-                        }
                     }
                 };
                 [weakSelf uploadFileBlockWithSaveToken:saveToken
                                             blockIndex:[num intValue]
                                          fileBlockData:blockData
                                             retryTimes:0
-                                           progressDic:progressDic
                                            tokenSecret:tokenSecret
                                          progressBlock:singleUploadProgressBlcok
                                          completeBlock:singleUploadCompleteBlock];
@@ -241,125 +252,75 @@ static NSMutableDictionary * managerRepository;
                            completeBlock:^(NSError *error,
                                            NSDictionary *result,
                                            BOOL completed) {
-        if (completeBlock) {
-            completeBlock(error,result,completed);
-        }else if(retryCount >= MaxRetryCount) {
-            completeBlock(error, nil, NO);
-        }else {
-            blockRetryCount++;
-            [weakSelf prepareUploadRequestWithPolicy:policy
-                                           signature:signature
-                                          retryCount:blockRetryCount
-                                       completeBlock:completeBlock];
-        }
-    }];
-    
+
+                               if (completeBlock) {
+                                   completeBlock(error,result,completed);
+                               }else if(retryCount >= MaxRetryCount) {
+                                   completeBlock(error, nil, NO);
+                               }else {
+                                   blockRetryCount++;
+                                   [weakSelf prepareUploadRequestWithPolicy:policy
+                                                                  signature:signature
+                                                                 retryCount:blockRetryCount
+                                                              completeBlock:completeBlock];
+                               }
+                           }];
+
 }
 
 - (void)uploadFileBlockWithSaveToken:(NSString *)saveToken
                           blockIndex:(NSInteger)blockIndex
                        fileBlockData:(NSData *)fileBlockData
                           retryTimes:(NSInteger)retryTimes
-                         progressDic:(NSMutableDictionary *)progressDic
                          tokenSecret:(NSString *)tokenSecret
                        progressBlock:(void (^)(float percent))progressBlock
                        completeBlock:(void (^)(NSError * error,
-                                                                   NSDictionary * result,
-                                                                   BOOL completed))completeBlock
+                                               NSDictionary * result,
+                                               BOOL completed))completeBlock
 {
     NSDictionary * policyParameters = @{@"save_token":saveToken,
                                         @"expiration":@(ceil([[NSDate date] timeIntervalSince1970]+ValidTimeSpan)),
                                         @"block_index":@(blockIndex),
                                         @"block_hash":[fileBlockData MD5HexDigest]};
     NSString * uploadPolicy = [self dictionaryToJSONStringBase64Encoding:policyParameters];
-    
     __weak typeof(self)weakSelf = self;
-    __block typeof(retryTimes)blockRetryTime = retryTimes;
-    __block NSString * key = [NSString stringWithFormat:@"%ld",(long)blockIndex];
-    id constructingBodyWithBlock = ^(id<AFMultipartFormData> formData) {
-        [formData appendPartWithFileData:fileBlockData
-                                    name:@"file"
-                                fileName:@"file"
-                                mimeType:@"file"];
-    };
-    id successBlock = ^(AFHTTPRequestOperation *operation, id responseObject) {
-        progressBlock(1);
-        NSError * error = [weakSelf checkResultWithResponseObject:responseObject
-                                                         response:operation.response];
-        if (error && completeBlock) {
-            if (retryTimes >= MaxRetryCount) {
-                completeBlock(error,nil,NO);
-            }else {
-                blockRetryTime++;
-                [weakSelf uploadFileBlockWithSaveToken:saveToken
-                                            blockIndex:blockIndex
-                                         fileBlockData:fileBlockData
-                                            retryTimes:blockRetryTime
-                                           progressDic:progressDic
-                                           tokenSecret:tokenSecret
-                                         progressBlock:progressBlock
-                                         completeBlock:completeBlock];
-
-            }
-        }else if (completeBlock) {
-            completeBlock(nil,responseObject,YES);
-        }
-    };
-    
-    id failureBlock = ^(AFHTTPRequestOperation *operation, NSError *error) {
-        float percent = [[progressDic objectForKey:key] floatValue];
-        progressBlock(-percent);
-        if (retryTimes >= MaxRetryCount) {
-            if (operation.responseData) {
-                NSDictionary * responseObject = [NSJSONSerialization JSONObjectWithData:operation.responseData
-                                                                                options:NSJSONReadingMutableLeaves
-                                                                                  error:nil];
-                if (responseObject[@"error_code"]) {
-                    NSHTTPURLResponse * response = operation.response;
-                    NSMutableDictionary * userInfo = [NSMutableDictionary dictionary];
-                    if (response.allHeaderFields) {
-                        userInfo[@"allHeaderFields"] = response.allHeaderFields;
-                        userInfo[@"statusCode"] = @(response.statusCode);
-                    }
-                    userInfo[NSLocalizedDescriptionKey] = responseObject[@"message"];
-                    error = [NSError errorWithDomain:UMU_ERROR_DOMAIN
-                                                code:[responseObject[@"error_code"] integerValue]
-                                            userInfo:userInfo];
-                }
-            }
-            completeBlock(error,nil,NO);
-        }else {
-            blockRetryTime++;
-            [weakSelf uploadFileBlockWithSaveToken:saveToken
-                                        blockIndex:blockIndex
-                                     fileBlockData:fileBlockData
-                                        retryTimes:blockRetryTime
-                                       progressDic:progressDic
-                                       tokenSecret:tokenSecret
-                                     progressBlock:progressBlock
-                                     completeBlock:completeBlock];
-        }
-    };
     NSDictionary * parameters = @{@"policy":uploadPolicy,
                                   @"signature":[weakSelf createSignatureWithToken:tokenSecret
                                                                        parameters:policyParameters]};
-#ifdef AF_1_3_4
-    NSMutableURLRequest *request =  [self.afClient multipartFormRequestWithMethod:@"POST"
-                                                                             path:@""
-                                                                       parameters:parameters
-                                                        constructingBodyWithBlock:constructingBodyWithBlock];
-    AFHTTPRequestOperation *uploadOperation = [self.afClient HTTPRequestOperationWithRequest:request
-                                                                                     success:successBlock
-                                                                                     failure:failureBlock];
-#else
-    AFHTTPRequestOperation *uploadOperation  = [self.afManager POST:@""
-                                                         parameters:parameters
-                                          constructingBodyWithBlock:constructingBodyWithBlock
-                                                            success:successBlock
-                                                            failure:failureBlock];
-#endif
-    [self.umuOperation addOperation:uploadOperation];
-    [uploadOperation start];
+    UPHTTPClient *upHttpClient = [[UPHTTPClient alloc] init];
+    NSURL * url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", API_SERVER, self.bucket]];
+    [upHttpClient sendMultipartFormRequestWithMethod:@"POST"
+                                                 url:url.absoluteString
+                                          parameters:parameters
+                                      filePathOrData:fileBlockData
+                                           fieldName:@"file"
+                                            fileName:@"filename"
+                                           mimeTypes:@"application/octet-stream"
+                                             success:^(UPHTTPClient *upHttpClient, NSURLResponse *response, id responseObject) {
+                                                 NSError *error;
+                                                 NSDictionary *json = [NSJSONSerialization JSONObjectWithData:responseObject
+                                                                                                      options:kNilOptions
+                                                                                                        error:&error];
+
+                                                 if (error) {
+                                                     NSLog(@"error %@", error);
+                                                     completeBlock(error, nil, NO);
+                                                 } else {
+                                                     completeBlock(error, json, YES);
+                                                 }
+
+                                             }
+                                             failure:^(NSError *error, NSURLResponse *response, id responseObject) {
+                                                 completeBlock(error, nil, NO);
+                                             }
+                                            progress:^(long long completedBytesCount, long long totalBytesCount) {
+                                                @synchronized(self) {
+                                                    float k = (float)completedBytesCount / totalBytesCount;
+                                                    if (progressBlock) {
+                                                        progressBlock(k);
+                                                    }
+                                                }
+                                            }];
 }
 
 
@@ -370,74 +331,85 @@ static NSMutableDictionary * managerRepository;
                                                 NSDictionary * result,
                                                 BOOL completed))completeBlock
 {
+
     __weak typeof(self)weakSelf = self;
     __block typeof(retryCount)blockRetryCount = retryCount;
     NSDictionary * parameters = @{@"save_token":saveToken,
                                   @"expiration":@(ceil([[NSDate date] timeIntervalSince1970]+60))};
     NSString * mergePolicy = [self dictionaryToJSONStringBase64Encoding:parameters];
     [self ministrantRequestWithSignature:[self createSignatureWithToken:tokenSecret
-                                                                    parameters:parameters]
-                                         policy:mergePolicy
-                                  completeBlock:^(NSError *error, NSDictionary *result, BOOL completed) {
-                                      if (completeBlock) {
-                                          completeBlock(error,result,completed);
-                                      }else if(retryCount >= MaxRetryCount) {
-                                          completeBlock(error, nil, NO);
-                                      }else {
-                                          blockRetryCount++;
-                                          [weakSelf fileMergeRequestWithSaveToken:saveToken
-                                                                      tokenSecret:tokenSecret
-                                                                       retryCount:blockRetryCount
-                                                                    completeBlock:completeBlock];
-                                      }
+                                                             parameters:parameters]
+                                  policy:mergePolicy
+                           completeBlock:^(NSError *error, NSDictionary *result, BOOL completed) {
 
-                                  }];
+                               if (completeBlock) {
+                                   completeBlock(error,result,completed);
+                               }else if(retryCount >= MaxRetryCount) {
+                                   completeBlock(error, nil, NO);
+                               }else {
+                                   blockRetryCount++;
+                                   [weakSelf fileMergeRequestWithSaveToken:saveToken
+                                                               tokenSecret:tokenSecret
+                                                                retryCount:blockRetryCount
+                                                             completeBlock:completeBlock];
+                               }
+
+                           }];
 }
 
-- (AFHTTPRequestOperation *)ministrantRequestWithSignature:(NSString *)signature
-                                                    policy:(NSString *)policy
-                                             completeBlock:(void (^)(NSError * error,
-                                                                     NSDictionary * result,
-                                                                     BOOL completed))completeBlock
-{
-    __weak typeof(self)weakSelf = self;
-    id successBlock = ^(AFHTTPRequestOperation *operation, id responseObject) {
-        NSError * error = [weakSelf checkResultWithResponseObject:responseObject
-                                                         response:operation.response];
-        if (error && completeBlock) {
-            completeBlock(error,nil,NO);
-        }else if (completeBlock) {
-            completeBlock(nil,responseObject,YES);
-        }
-    };
-    
-    id failureBlock = ^(AFHTTPRequestOperation *operation, NSError *error) {
-        NSDictionary * allHeaderFields = operation.response.allHeaderFields;
-        if (operation.responseData) {
-            NSDictionary * responseObject = [NSJSONSerialization JSONObjectWithData:operation.responseData
-                                                                            options:NSJSONReadingMutableLeaves
-                                                                              error:nil];
-            NSError * error = [weakSelf checkResultWithResponseObject:responseObject
-                                                             response:operation.response];
-        }
-        completeBlock(error,nil,NO);
-    };
+- (void)ministrantRequestWithSignature:(NSString *)signature
+                                policy:(NSString *)policy
+                         completeBlock:(void (^)(NSError * error,
+                                                 NSDictionary * result,
+                                                 BOOL completed))completeBlock {
+
     NSDictionary * requestParameters = @{@"policy":policy,
                                          @"signature":signature};
-#ifdef AF_1_3_4
-    NSMutableURLRequest *request = [self.afClient requestWithMethod:@"POST"
-                                                               path:@""
-                                                         parameters:requestParameters];
-    [request setValue:@"application/x-www-form-urlencoded; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
-    AFHTTPRequestOperation *ministrantOperation = [self.afClient HTTPRequestOperationWithRequest:request
-                                                                                         success:successBlock
-                                                                                         failure:failureBlock];
-#else
-    AFHTTPRequestOperation *ministrantOperation = [self.afManager POST:@"" parameters:requestParameters success:successBlock failure:failureBlock];
-#endif
-    [self.umuOperation addOperation:ministrantOperation];
-    [ministrantOperation start];
-    return ministrantOperation;
+    NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:nil delegateQueue:nil];
+    NSURL * url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", API_SERVER, self.bucket]];
+    NSMutableURLRequest *request = (NSMutableURLRequest *)[NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
+    NSMutableString *postParameters = [[NSMutableString alloc] init];
+    for (NSString *key in requestParameters.allKeys) {
+        NSString *keyValue = [NSString stringWithFormat:@"&%@=%@",key, [requestParameters objectForKey:key]];
+        [postParameters appendString:keyValue];
+    }
+    NSData *postData = [NSData data];
+    if (postParameters.length > 1) {
+        postData = [[postParameters substringFromIndex:1] dataUsingEncoding:NSUTF8StringEncoding];
+    }
+    request.HTTPBody = postData;
+    NSURLSessionTask *_sessionTask = [session dataTaskWithRequest:request
+                                                completionHandler:^(NSData *data,
+                                                                    NSURLResponse *response,
+                                                                    NSError *error) {
+                                                    if (error) {
+                                                        completeBlock(error, nil, NO);
+                                                    } else {
+                                                        //判断返回状态码错误。
+                                                        NSInteger statusCode =((NSHTTPURLResponse *)response).statusCode;
+                                                        NSIndexSet *succesStatus = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(200, 100)];
+                                                        if ([succesStatus containsIndex:statusCode]) {
+
+                                                            NSError *error;
+                                                            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:kNilOptions error:&error];
+                                                            if (json == nil) {
+                                                                completeBlock(error, nil, NO);
+                                                            } else {
+                                                                completeBlock(nil, json, YES);
+                                                            }
+                                                        } else {
+                                                            NSString *errorString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                                                            NSError *erro = [[NSError alloc] initWithDomain:@"UPHTTPClient"
+                                                                                                       code:0
+                                                                                                   userInfo:@{NSLocalizedDescriptionKey:errorString}];
+                                                            completeBlock(erro, nil, NO);
+                                                        }
+                                                    }
+                                                }];
+    [_sessionTask resume];
 }
 
 

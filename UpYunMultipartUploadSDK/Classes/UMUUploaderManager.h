@@ -8,6 +8,8 @@
 
 #import <Foundation/Foundation.h>
 #import "UMUUploaderOperation.h"
+
+
 @interface UMUUploaderManager : NSObject
 
 #pragma mark - setup Methods
@@ -70,7 +72,7 @@
 - (UMUUploaderOperation *)uploadWithFile:(NSData *)fileData
                                   policy:(NSString *)policy
                                signature:(NSString *)signature
-                           progressBlock:(void (^)(CGFloat percent,
+                           progressBlock:(void (^)(float percent,
                                                    long long requestDidSendBytes))progressBlock
                            completeBlock:(void (^)(NSError * error,
                                                    NSDictionary * result,

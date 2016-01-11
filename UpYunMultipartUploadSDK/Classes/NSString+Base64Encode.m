@@ -16,17 +16,17 @@ static const char encodingTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq
 {
     if ([self length] == 0)
         return @"";
-    
+
     const char *source = [self UTF8String];
-    int strlength  = strlen(source);
-    
+    int strlength  = (int)strlen(source);
+
     char *characters = malloc(((strlength + 2) / 3) * 4);
     if (characters == NULL)
         return nil;
-    
+
     NSUInteger length = 0;
     NSUInteger i = 0;
-    
+
     while (i < strlength) {
         char buffer[3] = {0,0,0};
         short bufferLength = 0;
@@ -41,7 +41,7 @@ static const char encodingTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq
             characters[length++] = encodingTable[buffer[2] & 0x3F];
         else characters[length++] = '=';
     }
-    
+
     return [[NSString alloc] initWithBytesNoCopy:characters length:length encoding:NSASCIIStringEncoding freeWhenDone:YES];
 }
 

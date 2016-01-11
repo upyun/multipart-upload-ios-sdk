@@ -7,22 +7,27 @@
 //
 
 #import "UMUUploaderOperation.h"
+
+
 @interface UMUUploaderOperation()
-@property(nonatomic, strong, readwrite)NSArray * operations;
+
+@property(nonatomic, strong, readwrite)NSArray * tasks;
+
 @end
+
+
 @implementation UMUUploaderOperation
 
-- (void)addOperation:(AFHTTPRequestOperation *)operation
-{
-    NSMutableArray * mutabelArray = [NSMutableArray arrayWithArray:self.operations];
-    [mutabelArray addObject:operation];
-    self.operations = mutabelArray;
+- (void)addTasks:(NSURLSessionTask *)task {
+    NSMutableArray * mutabelArray = [NSMutableArray arrayWithArray:self.tasks];
+    [mutabelArray addObject:task];
+    self.tasks = mutabelArray;
 }
 
-- (void)canncel
-{
-    for (AFHTTPRequestOperation * operation in self.operations) {
-        [operation cancel];
+- (void)canncel {
+    for (NSURLSessionTask * task in self.tasks) {
+        [task cancel];
     }
 }
+
 @end

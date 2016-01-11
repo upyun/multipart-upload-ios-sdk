@@ -7,10 +7,13 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <AFNetworking.h>
-@interface UMUUploaderOperation : NSObject
-@property(nonatomic, strong, readonly)NSArray * operations;
-- (void)addOperation:(AFHTTPRequestOperation *)operation;
 
+
+@interface UMUUploaderOperation : NSObject
+
+@property(nonatomic, strong, readonly)NSArray * tasks;
+
+- (void)addTasks:(NSURLSessionTask *)task;
 - (void)canncel;
+
 @end

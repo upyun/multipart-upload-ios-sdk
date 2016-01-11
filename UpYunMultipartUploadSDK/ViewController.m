@@ -10,9 +10,14 @@
 #import "UMUUploaderManager.h"
 #import "NSString+NSHash.h"
 #import "NSString+Base64Encode.h"
+
+
 @interface ViewController ()
+
 @property(nonatomic,strong)UIProgressView * propressView;
+
 @end
+
 
 @implementation ViewController
 
@@ -24,7 +29,7 @@
     [button setTitle:@"上传" forState:UIControlStateNormal];
     button.frame = CGRectMake(60, 120, 200, 40);
     [self.view addSubview:button];
-    
+
     self.propressView = [[UIProgressView alloc]initWithProgressViewStyle:UIProgressViewStyleBar];
     self.propressView.frame = CGRectMake(20, 80, 280, 40);
     [self.view addSubview:self.propressView];
@@ -32,33 +37,37 @@
 
 - (void)uploadFile
 {
-    
     NSString * url = [[NSBundle mainBundle] pathForResource:@"1" ofType:@"jpeg"];
     NSData * fileData = [NSData dataWithContentsOfFile:url];
     NSDictionary * fileInfo = [UMUUploaderManager fetchFileInfoDictionaryWith:fileData];//获取文件信息
 
     NSDictionary * signaturePolicyDic =[self constructingSignatureAndPolicyWithFileInfo:fileInfo];
-    
+
     NSString * signature = signaturePolicyDic[@"signature"];
     NSString * policy = signaturePolicyDic[@"policy"];
     NSString * bucket = signaturePolicyDic[@"bucket"];
-    
+
     __weak typeof(self)weakSelf = self;
     UMUUploaderManager * manager = [UMUUploaderManager managerWithBucket:bucket];
-    [manager uploadWithFile:fileData policy:policy signature:signature progressBlock:^(CGFloat percent, long long requestDidSendBytes) {
+    [manager uploadWithFile:fileData policy:policy signature:signature progressBlock:^(float percent, long long requestDidSendBytes) {
         NSLog(@"%f",percent);
-        weakSelf.propressView.progress = percent;
-    } completeBlock:^(NSError *error, NSDictionary *result, BOOL completed) {
-        UIAlertView * alert;
-        if (completed) {
-            alert = [[UIAlertView alloc]initWithTitle:@"" message:@"上传成功" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles: nil];
-            NSLog(@"%@",result);
-        }else {
-            alert = [[UIAlertView alloc]initWithTitle:@"" message:@"上传失败" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles: nil];
-            NSLog(@"%@",error);
-        }
-        [alert show];
+        dispatch_async(dispatch_get_main_queue(), ^() {
+            weakSelf.propressView.progress = percent;
+        });
 
+    } completeBlock:^(NSError *error, NSDictionary *result, BOOL completed) {
+        dispatch_async(dispatch_get_main_queue(), ^() {
+            UIAlertView * alert;
+            if (completed) {
+                alert = [[UIAlertView alloc]initWithTitle:@"" message:@"上传成功" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles: nil];
+                NSLog(@"%@",result);
+            }else {
+                alert = [[UIAlertView alloc]initWithTitle:@"" message:@"上传失败" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles: nil];
+                NSLog(@"%@",error);
+            }
+            [alert show];
+
+        });
     }];
 }
 
@@ -73,9 +82,9 @@
 - (NSDictionary *)constructingSignatureAndPolicyWithFileInfo:(NSDictionary *)fileInfo
 {
 #warning 您需要加上自己的bucket和secret
-    NSString * bucket = @"";
-    NSString * secret = @"";
-    
+    NSString * bucket = @"test86400";
+    NSString * secret = @"vcVus6Xo+nn51sJmGjqsW8rTpKs=";
+
     NSMutableDictionary * mutableDic = [[NSMutableDictionary alloc]initWithDictionary:fileInfo];
     [mutableDic setObject:@(ceil([[NSDate date] timeIntervalSince1970])+60) forKey:@"expiration"];//设置授权过期时间
     [mutableDic setObject:[NSString stringWithFormat:@"/test/%@.jpeg",@"fileName"] forKey:@"path"];//设置保存路径
@@ -90,7 +99,7 @@
         signature = [NSString stringWithFormat:@"%@%@%@",signature,key,value];
     }
     signature = [signature stringByAppendingString:secret];
-    
+
     return @{@"signature":[signature MD5],
              @"policy":[self dictionaryToJSONStringBase64Encoding:mutableDic],
              @"bucket":bucket};
