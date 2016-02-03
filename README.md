@@ -1,4 +1,9 @@
+#这个 SDK 将不再维护, 请使用[新版SDK](https://github.com/upyun/ios-sdk)
+
+
 # 又拍云iOS 分块上传 SDK
+
+
 
 又拍云存储iOS 分块上传 SDK，基于 [又拍云存储 分块上传 API接口] (http://docs.upyun.com/api/multipart_upload/) 开发。
 ## 使用说明
